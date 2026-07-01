@@ -1,0 +1,786 @@
+# TOADS AND FROGS PUZZLE Interactive Pygame Edition
+# Creatures drawn with pygame shapes
+# Auto-Solve via BFS Brute-Force Algorithm
+
+import pygame
+import sys
+import math
+import time
+import random
+from collections import deque
+
+# CONSTANTS & THEME
+
+W, H = 980, 660
+
+BG_DEEP    = (12,  14,  26)
+PANEL_BG   = (28,  34,  58)
+BORDER_CLR = (55,  65, 100)
+
+# Toad colours  (earthy brown / olive)
+TOAD_SKIN   = (160, 120,  50)
+TOAD_BELLY  = (200, 170,  90)
+TOAD_DARK   = ( 90,  65,  20)
+TOAD_EYE    = (255, 220,  60)
+TOAD_PUPIL  = ( 20,  10,   0)
+TOAD_WART   = (130,  95,  35)
+TOAD_GLOW   = (220, 180,  80)
+
+# Frog colours  (bright green)
+FROG_SKIN   = ( 50, 190,  80)
+FROG_BELLY  = (140, 230, 130)
+FROG_DARK   = ( 20, 110,  40)
+FROG_EYE    = (255, 255, 100)
+FROG_PUPIL  = (  0,  30,   0)
+FROG_STRIPE = ( 30, 150,  55)
+FROG_GLOW   = (100, 255, 150)
+
+EMPTY_CLR  = ( 38,  46,  78)
+EMPTY_RING = ( 70,  85, 130)
+SEL_RING   = (255, 230,  80)
+
+TEXT_MAIN  = (220, 225, 255)
+TEXT_DIM   = (100, 115, 160)
+TEXT_WIN   = (255, 230,  80)
+TEXT_LOSE  = (255,  80,  80)
+TEXT_AUTO  = ( 80, 220, 255)
+
+BTN_BG     = ( 40,  50,  90)
+BTN_HOV    = ( 60,  75, 130)
+BTN_ACTIVE = ( 80, 150, 255)
+BTN_SOLVE  = ( 30, 110,  60)
+BTN_SOLVE_H= ( 50, 160,  90)
+BTN_STOP   = (120,  40,  40)
+BTN_STOP_H = (180,  60,  60)
+
+pygame.init()
+screen = pygame.display.set_mode((W, H))
+pygame.display.set_caption("Toads & Frogs Puzzle")
+clock = pygame.time.Clock()
+
+try:
+    font_title = pygame.font.SysFont("Georgia",    36, bold=True)
+    font_sub   = pygame.font.SysFont("Georgia",    16)
+    font_btn   = pygame.font.SysFont("Segoe UI",   15, bold=True)
+    font_info  = pygame.font.SysFont("Consolas",   14)
+    font_big   = pygame.font.SysFont("Georgia",    54, bold=True)
+    font_label = pygame.font.SysFont("Segoe UI",   13, bold=True)
+except Exception:
+    font_title = pygame.font.Font(None, 44)
+    font_sub   = pygame.font.Font(None, 22)
+    font_btn   = pygame.font.Font(None, 22)
+    font_info  = pygame.font.Font(None, 20)
+    font_big   = pygame.font.Font(None, 64)
+    font_label = pygame.font.Font(None, 18)
+
+# PUZZLE LOGIC
+
+def make_initial(n):  return ['T']*n + ['_'] + ['F']*n
+def make_goal(n):     return ['F']*n + ['_'] + ['T']*n
+
+def legal_moves(state):
+    moves = []
+    empty = state.index('_')
+    for i, p in enumerate(state):
+        if p == 'T':
+            if i+1 == empty:                            moves.append((i, empty))
+            if i+2 == empty and state[i+1] == 'F':     moves.append((i, empty))
+        elif p == 'F':
+            if i-1 == empty:                            moves.append((i, empty))
+            if i-2 == empty and state[i-1] == 'T':     moves.append((i, empty))
+    return moves
+
+def apply_move(state, frm, to):
+    s = state[:]
+    s[frm], s[to] = s[to], s[frm]
+    return s
+
+def is_won(state, n):  return state == make_goal(n)
+def is_stuck(state):   return len(legal_moves(state)) == 0
+def optimal_steps(n):  return n*(n+2)
+
+# BFS BRUTE-FORCE SOLVER
+
+def bfs_solve(initial_state, n):
+    """
+    BFS brute-force algorithm as specified.
+    Returns a list of (from_index, to_index) moves, or None if unsolvable.
+    """
+    goal = make_goal(n)
+    queue = deque()
+    visited = set()
+
+    # Enqueue (state, path_of_moves)
+    queue.append((initial_state[:], []))
+
+    while queue:
+        state, path = queue.popleft()
+
+        if state == goal:
+            return path
+
+        state_key = tuple(state)
+        if state_key in visited:
+            continue
+        visited.add(state_key)
+
+        empty_pos = state.index('_')
+
+        for i, piece in enumerate(state):
+            if piece == 'T':
+                # Toad moves right: step 1
+                if i + 1 == empty_pos:
+                    new_state = state[:]
+                    new_state[i], new_state[empty_pos] = new_state[empty_pos], new_state[i]
+                    if tuple(new_state) not in visited:
+                        queue.append((new_state, path + [(i, empty_pos)]))
+                # Toad jumps right over a frog: step 2
+                if i + 2 == empty_pos and state[i + 1] == 'F':
+                    new_state = state[:]
+                    new_state[i], new_state[empty_pos] = new_state[empty_pos], new_state[i]
+                    if tuple(new_state) not in visited:
+                        queue.append((new_state, path + [(i, empty_pos)]))
+
+            elif piece == 'F':
+                # Frog moves left: step 1
+                if i - 1 == empty_pos:
+                    new_state = state[:]
+                    new_state[i], new_state[empty_pos] = new_state[empty_pos], new_state[i]
+                    if tuple(new_state) not in visited:
+                        queue.append((new_state, path + [(i, empty_pos)]))
+                # Frog jumps left over a toad: step 2
+                if i - 2 == empty_pos and state[i - 1] == 'T':
+                    new_state = state[:]
+                    new_state[i], new_state[empty_pos] = new_state[empty_pos], new_state[i]
+                    if tuple(new_state) not in visited:
+                        queue.append((new_state, path + [(i, empty_pos)]))
+
+    return None  # No solution found
+
+# ANIMATION
+
+class AnimPiece:
+    def __init__(self, sx, sy, ex, ey, piece, duration=0.25):
+        self.sx, self.sy = sx, sy
+        self.ex, self.ey = ex, ey
+        self.piece    = piece
+        self.duration = duration
+        self.t0       = time.time()
+        self.done     = False
+        self.cx, self.cy = float(sx), float(sy)
+
+    def update(self):
+        elapsed = time.time() - self.t0
+        p = min(elapsed / self.duration, 1.0)
+        p = 1 - (1-p)**3
+        self.cx = self.sx + (self.ex - self.sx) * p
+        self.cy = self.sy + (self.ey - self.sy) * p
+        arc_h = abs(self.ex - self.sx) * 0.18
+        self.cy -= arc_h * math.sin(p * math.pi)
+        if elapsed >= self.duration:
+            self.cx, self.cy = float(self.ex), float(self.ey)
+            self.done = True
+
+# CREATURE DRAWING
+
+def _c(surf, color, cx, cy, r, w=0):
+    pygame.draw.circle(surf, color, (int(cx), int(cy)), max(1, int(r)), w)
+
+def _e(surf, color, cx, cy, rw, rh, w=0):
+    rect = pygame.Rect(int(cx-rw), int(cy-rh), int(rw*2), int(rh*2))
+    if rect.width > 0 and rect.height > 0:
+        pygame.draw.ellipse(surf, color, rect, w)
+
+
+def draw_toad(surf, cx, cy, radius, pulse=0.0, selected=False, valid_dest=False):
+    r = radius
+    s = r / 40.0
+
+    gr = r + 5 + int(3*math.sin(pulse*2))
+    gs = pygame.Surface((gr*2+4, gr*2+4), pygame.SRCALPHA)
+    a  = 65 + int(25*math.sin(pulse*2))
+    pygame.draw.circle(gs, (*TOAD_GLOW, a), (gr+2, gr+2), gr)
+    surf.blit(gs, (int(cx)-gr-2, int(cy)-gr-2))
+
+    _e(surf, (0,0,0,80), cx, cy+r*0.75, r*0.7, r*0.18)
+    bw, bh = int(r*0.84), int(r*0.70)
+    _e(surf, TOAD_DARK,  cx, cy+s*2, bw+3, bh+3)
+    _e(surf, TOAD_SKIN,  cx, cy+s*2, bw,   bh)
+    _e(surf, TOAD_BELLY, cx, cy+s*9, int(bw*0.55), int(bh*0.44))
+
+    for wx, wy, wr in [(-s*13, -s*4, s*5), (s*11, -s*2, s*4),
+                        (-s*5,   s*9, s*3), ( s*7,  s*10, s*3)]:
+        _c(surf, TOAD_WART, cx+wx, cy+wy, max(1, wr))
+
+    for side in (-1, 1):
+        lx = cx + side*int(r*0.74)
+        _e(surf, TOAD_DARK, lx, cy+int(r*0.56), int(s*14), int(s*9))
+        _e(surf, TOAD_SKIN, lx, cy+int(r*0.51), int(s*12), int(s*7))
+        for toe in range(3):
+            tx = lx + side*(int(s*5) + toe*int(s*5) - int(s*5))
+            _c(surf, TOAD_SKIN, tx, cy+int(r*0.70), max(1, int(s*4)))
+
+    ey_y = cy - int(r*0.60)
+    for side in (-1, 1):
+        ex_ = cx + side*int(r*0.30)
+        _c(surf, TOAD_DARK,  ex_, ey_y, int(s*11)+2)
+        _c(surf, TOAD_EYE,   ex_, ey_y, int(s*11))
+        _c(surf, TOAD_PUPIL, ex_+side*int(s*3), ey_y+int(s*2), max(1,int(s*5)))
+        _c(surf, (255,255,255), ex_+side*int(s*2)-int(s*2), ey_y-int(s*3), max(1,int(s*2)))
+
+    mr = pygame.Rect(int(cx-s*16), int(cy+s*2), int(s*32), int(s*16))
+    if mr.width > 0 and mr.height > 0:
+        pygame.draw.arc(surf, TOAD_DARK, mr, math.pi, math.pi*2, max(1,int(s*2)))
+
+    if selected:
+        rr = r+7+int(3*math.sin(pulse*3))
+        _c(surf, SEL_RING, cx, cy, rr, 3)
+
+    if valid_dest:
+        va = int(110+80*math.sin(pulse*4))
+        vs = pygame.Surface((r*2+28, r*2+28), pygame.SRCALPHA)
+        pygame.draw.circle(vs, (100,220,255,va), (r+14, r+14), r+12)
+        surf.blit(vs, (int(cx)-r-14, int(cy)-r-14))
+        _c(surf, (100,220,255), cx, cy, r+12, 3)
+
+
+def draw_frog(surf, cx, cy, radius, pulse=0.0, selected=False, valid_dest=False):
+    r = radius
+    s = r / 40.0
+
+    gr = r + 5 + int(3*math.sin(pulse*2))
+    gs = pygame.Surface((gr*2+4, gr*2+4), pygame.SRCALPHA)
+    a  = 65 + int(25*math.sin(pulse*2))
+    pygame.draw.circle(gs, (*FROG_GLOW, a), (gr+2, gr+2), gr)
+    surf.blit(gs, (int(cx)-gr-2, int(cy)-gr-2))
+
+    _e(surf, (0,0,0,80), cx, cy+r*0.75, r*0.7, r*0.18)
+    bw, bh = int(r*0.80), int(r*0.74)
+    _e(surf, FROG_DARK,   cx, cy+s*2, bw+3, bh+3)
+    _e(surf, FROG_SKIN,   cx, cy+s*2, bw,   bh)
+    _e(surf, FROG_STRIPE, cx, cy-s*3, int(bw*0.22), int(bh*0.65))
+    _e(surf, FROG_BELLY,  cx, cy+s*10, int(bw*0.52), int(bh*0.42))
+
+    for side in (-1, 1):
+        lx = cx + side*int(r*0.76)
+        _e(surf, FROG_DARK, lx, cy+int(r*0.44), int(s*14), int(s*7))
+        _e(surf, FROG_SKIN, lx, cy+int(r*0.39), int(s*12), int(s*6))
+        sx2 = lx + side*int(s*6)
+        _e(surf, FROG_SKIN, sx2, cy+int(r*0.65), int(s*8), int(s*5))
+        for toe in range(4):
+            tx = lx + side*(int(s*3) + toe*int(s*4) - int(s*6))
+            _c(surf, FROG_BELLY, tx, cy+int(r*0.78), max(1,int(s*3)))
+
+    ey_y = cy - int(r*0.65)
+    for side in (-1, 1):
+        ex_ = cx + side*int(r*0.32)
+        pygame.draw.line(surf, FROG_DARK,
+                         (int(ex_), int(cy-int(r*0.46))),
+                         (int(ex_), int(ey_y)), max(1,int(s*4)))
+        _c(surf, FROG_DARK,  ex_, ey_y, int(s*12)+2)
+        _c(surf, FROG_EYE,   ex_, ey_y, int(s*12))
+        _c(surf, FROG_PUPIL, ex_+side*int(s*2), ey_y+int(s*2), max(1,int(s*5)))
+        _c(surf, (255,255,255), ex_+side*int(s*2)-int(s*2), ey_y-int(s*3), max(1,int(s*2)))
+
+    mr = pygame.Rect(int(cx-s*18), int(cy+s*1), int(s*36), int(s*18))
+    if mr.width > 0 and mr.height > 0:
+        pygame.draw.arc(surf, FROG_DARK, mr, math.pi, math.pi*2, max(1,int(s*2)))
+
+    if selected:
+        rr = r+7+int(3*math.sin(pulse*3))
+        _c(surf, SEL_RING, cx, cy, rr, 3)
+
+    if valid_dest:
+        va = int(110+80*math.sin(pulse*4))
+        vs = pygame.Surface((r*2+28, r*2+28), pygame.SRCALPHA)
+        pygame.draw.circle(vs, (100,220,255,va), (r+14, r+14), r+12)
+        surf.blit(vs, (int(cx)-r-14, int(cy)-r-14))
+        _c(surf, (100,220,255), cx, cy, r+12, 3)
+
+
+def draw_empty_cell(surf, cx, cy, radius, pulse=0.0, valid_dest=False):
+    _c(surf, EMPTY_CLR,  cx, cy, radius)
+    _c(surf, EMPTY_RING, cx, cy, radius, 2)
+    if valid_dest:
+        va = int(120+80*math.sin(pulse*4))
+        vs = pygame.Surface((radius*2+28, radius*2+28), pygame.SRCALPHA)
+        pygame.draw.circle(vs, (100,220,255,va), (radius+14, radius+14), radius+12)
+        surf.blit(vs, (int(cx)-radius-14, int(cy)-radius-14))
+        _c(surf, (100,220,255), cx, cy, radius, 3)
+
+# UI HELPERS
+
+random.seed(42)
+STARS = [(random.randint(0,W), random.randint(0,H),
+          random.uniform(0.3,1.2), random.uniform(0,math.pi*2))
+         for _ in range(130)]
+
+def draw_background(t):
+    screen.fill(BG_DEEP)
+    grad = pygame.Surface((W, H//2), pygame.SRCALPHA)
+    for y in range(H//2):
+        a = int(28*(1 - y/(H//2)))
+        pygame.draw.line(grad, (60,80,160,a), (0,y), (W,y))
+    screen.blit(grad, (0,0))
+    for sx, sy, br, phase in STARS:
+        a = 90 + int(70*math.sin(t*br+phase))
+        r = 1 if br < 0.7 else 2
+        ss = pygame.Surface((r*2+2, r*2+2), pygame.SRCALPHA)
+        pygame.draw.circle(ss, (200,210,255,a), (r+1,r+1), r)
+        screen.blit(ss, (sx-r-1, sy-r-1))
+
+def draw_rounded_rect(surf, color, rect, r=12, border=0, bc=None):
+    pygame.draw.rect(surf, color, rect, border_radius=r)
+    if border and bc:
+        pygame.draw.rect(surf, bc, rect, border, border_radius=r)
+
+def draw_button(surf, rect, text, hovered, active=False,
+                base_color=None, hover_color=None):
+    if base_color is None:  base_color  = BTN_BG
+    if hover_color is None: hover_color = BTN_HOV
+    col = BTN_ACTIVE if active else (hover_color if hovered else base_color)
+    draw_rounded_rect(surf, col, rect, 10, 1, BORDER_CLR)
+    lbl = font_btn.render(text, True, TEXT_MAIN)
+    surf.blit(lbl, lbl.get_rect(center=rect.center))
+
+def draw_arrow(surf, x1, y1, x2, y2, color, w=2):
+    pygame.draw.line(surf, color, (x1,y1), (x2,y2), w)
+    angle = math.atan2(y2-y1, x2-x1)
+    for da in (0.4, -0.4):
+        ax = x2 - 10*math.cos(angle-da)
+        ay = y2 - 10*math.sin(angle-da)
+        pygame.draw.line(surf, color, (x2,y2), (int(ax),int(ay)), w)
+
+# SPEED CONTROL CONFIG
+
+SPEED_OPTIONS  = [("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0), ("4×", 4.0)]
+ANIM_BASE_DUR  = 0.38   # seconds per move at 1× speed
+
+# MAIN GAME CLASS
+
+class Game:
+    N_OPTIONS = [1, 2, 3, 4, 5]
+    BOARD_Y   = 330
+
+    def __init__(self):
+        self.n = 3
+        self.auto_speed     = 1.0    # multiplier
+        self.auto_speed_idx = 1      # index into SPEED_OPTIONS
+        self.reset()
+        self._build_ui()
+
+    def reset(self):
+        self.state      = make_initial(self.n)
+        self.history    = [self.state[:]]
+        self.selected   = None
+        self.anim       = None
+        self.won        = False
+        self.stuck      = False
+        self.steps      = 0
+        self.start_time = time.time()
+        self.elapsed    = 0.0
+        self.pulse      = 0.0
+        self.msg        = ""
+        self.msg_timer  = 0.0
+        # Auto-solve state
+        self.solving        = False   # BFS running / playback active
+        self.solve_path     = []      # list of (frm, to) moves
+        self.solve_step_idx = 0       # next move index to play
+        self.solve_delay    = 0.0     # timer between moves
+        self.solve_status   = ""      # status text shown to user
+
+    def _build_ui(self):
+        bw, bh = 50, 34
+        total_w = len(self.N_OPTIONS)*(bw+8) - 8
+        sx = W//2 - total_w//2
+        self.n_btns    = [(pygame.Rect(sx+i*(bw+8), 62, bw, bh), v)
+                          for i,v in enumerate(self.N_OPTIONS)]
+        self.btn_reset = pygame.Rect(W//2-250, 595, 130, 40)
+        self.btn_undo  = pygame.Rect(W//2-105, 595, 130, 40)
+        self.btn_solve = pygame.Rect(W//2+ 40, 595, 155, 40)
+
+        # Speed buttons (to the right of solve button)
+        spd_x = W//2 + 210
+        spd_w = 52
+        self.speed_btns = [
+            (pygame.Rect(spd_x + i*(spd_w+4), 595, spd_w, 40), i)
+            for i in range(len(SPEED_OPTIONS))
+        ]
+
+    def _cell_layout(self):
+        total   = len(self.state)
+        radius  = min(46, max(24, (W-120)//(total*2+1)))
+        spacing = radius*2 + 14
+        ox      = (W - (total*spacing - 14))//2 + radius
+        return [(ox + i*spacing, self.BOARD_Y, radius) for i in range(total)]
+
+    def _valid_dests(self):
+        if self.selected is None: return []
+        return [to for frm,to in legal_moves(self.state) if frm==self.selected]
+
+    def _sources_for_empty(self):
+        empty = self.state.index('_')
+        return [frm for frm,to in legal_moves(self.state) if to==empty]
+
+    #  Auto-solve 
+
+    def start_solve(self):
+        """Run BFS from the current state and start animated playback."""
+        if self.won or self.anim:
+            return
+        self.solving     = True
+        self.solve_status = "🔍 BFS searching…"
+        self.selected    = None
+
+        path = bfs_solve(self.state, self.n)
+
+        if path is None:
+            self.solving      = False
+            self.solve_status = ""
+            self.show_msg("BFS: No solution found from this state!", 3.0)
+            return
+
+        self.solve_path     = path
+        self.solve_step_idx = 0
+        self.solve_delay    = 0.0
+        self.solve_status   = f"🤖 Auto-solving… step 0 / {len(path)}"
+
+    def stop_solve(self):
+        self.solving      = False
+        self.solve_path   = []
+        self.solve_status = ""
+
+    def _advance_solve(self, dt):
+        """Called each frame while solving is active."""
+        if not self.solving or self.anim:
+            return
+        if self.solve_step_idx >= len(self.solve_path):
+            self.solving      = False
+            self.solve_status = ""
+            return
+
+        self.solve_delay -= dt
+        if self.solve_delay > 0:
+            return
+
+        # Play next move
+        frm, to = self.solve_path[self.solve_step_idx]
+        cells   = self._cell_layout()
+        self._do_move(frm, to, cells)
+        self.solve_step_idx += 1
+
+        total = len(self.solve_path)
+        self.solve_status = f"🤖 Auto-solving… step {self.solve_step_idx} / {total}"
+
+        anim_dur = ANIM_BASE_DUR / self.auto_speed
+        # Small pause between moves (0.1 s base, scaled)
+        self.solve_delay = anim_dur + (0.10 / self.auto_speed)
+
+        if self.won:
+            self.solving      = False
+            self.solve_status = ""
+
+    #  Manual interaction
+
+    def handle_click(self, mx, my):
+        if self.won or self.stuck or self.anim or self.solving: return
+        cells = self._cell_layout()
+        hit = None
+        for i,(cx,cy,r) in enumerate(cells):
+            if math.hypot(mx-cx, my-cy) <= r+6:
+                hit = i; break
+        if hit is None:
+            self.selected = None; return
+
+        piece = self.state[hit]
+
+        if self.selected is not None and hit in self._valid_dests():
+            self._do_move(self.selected, hit, cells); return
+
+        if piece == '_':
+            srcs = self._sources_for_empty()
+            if len(srcs) == 1: self._do_move(srcs[0], hit, cells)
+            else:              self.selected = None
+            return
+
+        can = any(frm==hit for frm,_ in legal_moves(self.state))
+        if can:
+            self.selected = hit
+        else:
+            self.show_msg("This piece has no valid moves!")
+            self.selected = None
+
+    def _do_move(self, frm, to, cells):
+        anim_dur = ANIM_BASE_DUR / self.auto_speed if self.solving else 0.25
+        sx,sy,_ = cells[frm]; ex,ey,_ = cells[to]
+        self.anim  = AnimPiece(sx, sy, ex, ey, self.state[frm], duration=anim_dur)
+        self.state = apply_move(self.state, frm, to)
+        self.history.append(self.state[:])
+        self.steps += 1
+        self.selected = None
+        if is_won(self.state, self.n):   self.won   = True
+        elif is_stuck(self.state):       self.stuck = True
+
+    def undo(self):
+        if self.solving: self.stop_solve()
+        if len(self.history) <= 1 or self.anim: return
+        self.history.pop()
+        self.state    = self.history[-1][:]
+        self.steps    = max(0, self.steps-1)
+        self.selected = None
+        self.won = self.stuck = False
+
+    def show_msg(self, text, dur=2.5):
+        self.msg = text; self.msg_timer = dur
+
+    def update(self, dt):
+        self.pulse += dt
+        if self.anim:
+            self.anim.update()
+            if self.anim.done: self.anim = None
+        if self.solving:
+            self._advance_solve(dt)
+        if not self.won and not self.stuck:
+            self.elapsed = time.time() - self.start_time
+        if self.msg_timer > 0:
+            self.msg_timer -= dt
+            if self.msg_timer <= 0: self.msg = ""
+
+    # Draw 
+
+    def draw(self, mx, my):
+        t = self.pulse
+        draw_background(t)
+        cells = self._cell_layout()
+
+        # Title 
+        ts = font_title.render("TOADS  &  FROGS", True, TEXT_MAIN)
+        screen.blit(ts, ts.get_rect(centerx=W//2, y=14))
+        ss = font_sub.render(
+            "Swap all toads to the right side and all frogs to the left!", True, TEXT_DIM)
+        screen.blit(ss, ss.get_rect(centerx=W//2, y=54))
+
+        # n selector buttons 
+        nl = font_info.render("n =", True, TEXT_DIM)
+        screen.blit(nl, (self.n_btns[0][0].x-44, self.n_btns[0][0].y+9))
+        for rect,val in self.n_btns:
+            draw_button(screen, rect, str(val), rect.collidepoint(mx,my), val==self.n)
+
+        # Info panel 
+        ip = pygame.Rect(W//2-330, 108, 660, 44)
+        draw_rounded_rect(screen, PANEL_BG, ip, 12, 1, BORDER_CLR)
+        opt  = optimal_steps(self.n)
+        m,s2 = divmod(int(self.elapsed), 60)
+        itxt = (f"  Steps: {self.steps}   |   Optimal: {opt}"
+                f"   |   Time: {m:02d}:{s2:02d}   |   n = {self.n}  ")
+        isurf = font_info.render(itxt, True, TEXT_MAIN)
+        screen.blit(isurf, isurf.get_rect(center=ip.center))
+
+        # Legend
+        leg_y = 166
+        draw_toad(screen, W//2-200, leg_y, 15, t)
+        lt = font_info.render("= Toad  (moves →)", True, TEXT_DIM)
+        screen.blit(lt, (W//2-182, leg_y-8))
+        draw_frog(screen, W//2+28, leg_y, 15, t)
+        lf = font_info.render("= Frog  (moves ←)", True, TEXT_DIM)
+        screen.blit(lf, (W//2+48, leg_y-8))
+
+        # Auto-solve status banner
+        if self.solve_status:
+            sb = pygame.Rect(W//2-280, 193, 560, 30)
+            draw_rounded_rect(screen, (20, 50, 30), sb, 8, 1, (40,130,70))
+            sl = font_info.render(self.solve_status, True, TEXT_AUTO)
+            screen.blit(sl, sl.get_rect(center=sb.center))
+
+        # Progress bar
+        goal = make_goal(self.n)
+        pct  = sum(1 for a,b in zip(self.state,goal) if a==b) / len(self.state)
+        br   = pygame.Rect(W//2-220, 415, 440, 10)
+        draw_rounded_rect(screen, (30,38,68), br, 5)
+        if pct > 0:
+            fill = pygame.Rect(br.x, br.y, int(440*pct), 10)
+            draw_rounded_rect(screen, (80,150,255), fill, 5)
+        ps = font_info.render(f"Progress: {int(pct*100)}%", True, TEXT_DIM)
+        screen.blit(ps, ps.get_rect(centerx=W//2, y=431))
+
+        # Board
+        valid_dests = set(self._valid_dests())
+        empty_idx   = self.state.index('_')
+
+        for i,(cx,cy,r) in enumerate(cells):
+            piece = self.state[i]
+            sel   = (self.selected == i)
+            vd    = (i in valid_dests)
+
+            if self.anim and not self.anim.done and i == empty_idx and piece == '_':
+                draw_empty_cell(screen, cx, cy, r, t, vd)
+                continue
+
+            if piece == 'T':
+                draw_toad(screen, cx, cy, r, t, sel, vd)
+            elif piece == 'F':
+                draw_frog(screen, cx, cy, r, t, sel, vd)
+            else:
+                draw_empty_cell(screen, cx, cy, r, t, vd)
+
+        # Animated piece
+        if self.anim and not self.anim.done:
+            _,_,r = cells[0]
+            if self.anim.piece == 'T':
+                draw_toad(screen, self.anim.cx, self.anim.cy, r, t)
+            else:
+                draw_frog(screen, self.anim.cx, self.anim.cy, r, t)
+
+        # Hint arrows
+        if not self.solving:
+            hint_y = self.BOARD_Y - cells[0][2] - 28
+            for frm,to in legal_moves(self.state):
+                if frm == self.selected or to in valid_dests:
+                    cx1 = cells[frm][0]; cx2 = cells[to][0]
+                    col = SEL_RING if frm==self.selected else EMPTY_RING
+                    draw_arrow(screen, cx1, hint_y, cx2, hint_y, col, 2)
+        else:
+            # During auto-solve: show next move arrow in cyan
+            if (not self.anim and
+                    self.solve_step_idx < len(self.solve_path)):
+                frm, to = self.solve_path[self.solve_step_idx]
+                hint_y = self.BOARD_Y - cells[0][2] - 28
+                draw_arrow(screen, cells[frm][0], hint_y,
+                           cells[to][0],  hint_y, TEXT_AUTO, 3)
+
+        # Labels under cells
+        for i,(cx,cy,r) in enumerate(cells):
+            p = self.state[i]
+            if p != '_':
+                lbl = font_label.render("TOAD" if p=='T' else "FROG", True,
+                    (180,140,60) if p=='T' else (60,200,100))
+                screen.blit(lbl, lbl.get_rect(centerx=int(cx), y=cy+r+8))
+
+        # Action buttons
+        draw_button(screen, self.btn_reset, "↺  RESTART",
+                    self.btn_reset.collidepoint(mx,my))
+        draw_button(screen, self.btn_undo,  "← UNDO",
+                    self.btn_undo.collidepoint(mx,my))
+
+        # Solve / Stop button
+        if self.solving:
+            draw_button(screen, self.btn_solve, "⏹  STOP SOLVE",
+                        self.btn_solve.collidepoint(mx,my),
+                        base_color=BTN_STOP, hover_color=BTN_STOP_H)
+        else:
+            draw_button(screen, self.btn_solve, "🤖  AUTO SOLVE",
+                        self.btn_solve.collidepoint(mx,my),
+                        base_color=BTN_SOLVE, hover_color=BTN_SOLVE_H)
+
+        # Speed buttons
+        spd_label = font_info.render("Speed:", True, TEXT_DIM)
+        screen.blit(spd_label, (self.speed_btns[0][0].x, 580))
+        for rect, idx in self.speed_btns:
+            label, _ = SPEED_OPTIONS[idx]
+            draw_button(screen, rect, label,
+                        rect.collidepoint(mx,my),
+                        active=(idx == self.auto_speed_idx))
+
+        # Floating message
+        if self.msg and self.msg_timer > 0:
+            ms = font_info.render(self.msg, True, TEXT_LOSE)
+            screen.blit(ms, ms.get_rect(centerx=W//2, y=558))
+
+        # Win / Stuck overlay
+        if self.won or self.stuck:
+            ov = pygame.Surface((W,H), pygame.SRCALPHA)
+            ov.fill((0,0,0,170)); screen.blit(ov,(0,0))
+
+            opt = optimal_steps(self.n)
+            if self.won:
+                big  = font_big.render("YOU WIN!", True, TEXT_WIN)
+                screen.blit(big, big.get_rect(centerx=W//2, centery=H//2-55))
+                solved_by = "  [BFS Auto-Solved]" if not any(True for _ in []) else ""
+                eff  = ("PERFECT — Optimal!" if self.steps==opt else
+                        "GREAT!" if self.steps<=opt+2 else "Puzzle Complete!")
+                sub2 = font_sub.render(
+                    f"{eff}   Steps used: {self.steps}  |  Optimal: {opt}",
+                    True, TEXT_MAIN)
+                screen.blit(sub2, sub2.get_rect(centerx=W//2, centery=H//2+18))
+            else:
+                big  = font_big.render("STUCK!", True, TEXT_LOSE)
+                screen.blit(big, big.get_rect(centerx=W//2, centery=H//2-55))
+                sub2 = font_sub.render(
+                    "No valid moves — press UNDO or RESTART", True, TEXT_MAIN)
+                screen.blit(sub2, sub2.get_rect(centerx=W//2, centery=H//2+18))
+
+            h3 = font_info.render("Press SPACE to restart", True, TEXT_DIM)
+            screen.blit(h3, h3.get_rect(centerx=W//2, centery=H//2+60))
+
+        # Controls hint
+        ctrl = font_info.render(
+            "Click to select/move  •  Z = undo  •  SPACE = restart  "
+            "•  S = auto-solve  •  Speed buttons to adjust pace",
+            True, TEXT_DIM)
+        screen.blit(ctrl, ctrl.get_rect(centerx=W//2, y=H-20))
+
+# MAIN LOOP
+
+def main():
+    game = Game()
+    prev = time.time()
+
+    while True:
+        now  = time.time()
+        dt   = now - prev
+        prev = now
+        mx, my = pygame.mouse.get_pos()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_r, pygame.K_SPACE):
+                    game.stop_solve(); game.reset()
+                if event.key == pygame.K_z:
+                    game.undo()
+                if event.key == pygame.K_s:
+                    if game.solving: game.stop_solve()
+                    else:            game.start_solve()
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                handled = False
+
+                # n-size buttons
+                for rect, val in game.n_btns:
+                    if rect.collidepoint(mx, my):
+                        game.stop_solve()
+                        game.n = val
+                        game.reset()
+                        game._build_ui()
+                        handled = True
+                        break
+
+                if not handled:
+                    # Speed buttons
+                    for rect, idx in game.speed_btns:
+                        if rect.collidepoint(mx, my):
+                            game.auto_speed_idx = idx
+                            game.auto_speed     = SPEED_OPTIONS[idx][1]
+                            handled = True
+                            break
+
+                if not handled:
+                    if game.btn_reset.collidepoint(mx, my):
+                        game.stop_solve(); game.reset()
+                    elif game.btn_undo.collidepoint(mx, my):
+                        game.undo()
+                    elif game.btn_solve.collidepoint(mx, my):
+                        if game.solving: game.stop_solve()
+                        else:            game.start_solve()
+                    else:
+                        game.handle_click(mx, my)
+
+        game.update(dt)
+        game.draw(mx, my)
+        pygame.display.flip()
+        clock.tick(60)
+
+if __name__ == "__main__":
+    main()
